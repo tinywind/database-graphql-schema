@@ -1,0 +1,33 @@
+name: Bug report
+description: Report incorrect generation, verification, or metadata behavior
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Observed behavior
+      description: Include the command and sanitized error/output.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: postgres-graphql-schema version
+    validations:
+      required: true
+  - type: input
+    id: postgres
+    attributes:
+      label: PostgreSQL version
+  - type: textarea
+    id: fixture
+    attributes:
+      label: Minimal synthetic schema/config
+      description: Do not include credentials, private schemas, internal URLs, or customer data.

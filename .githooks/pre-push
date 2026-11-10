@@ -1,0 +1,15 @@
+#!/usr/bin/env sh
+set -eu
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+before="$(git status --porcelain)"
+printf '%s\n' 'pre-push: running make verify-push'
+make verify-push
+after="$(git status --porcelain)"
+
+if [ "$before" != "$after" ]; then
+  printf '%s\n' 'pre-push: verification changed the working tree; commit or revert those changes.' >&2
+  exit 1
+fi

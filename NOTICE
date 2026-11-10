@@ -1,0 +1,9 @@
+postgres-graphql-schema
+Copyright 2026 Jeon JaeHyeong
+
+This product includes behavior and test-compatibility work derived from
+GRAPHQL-SCHEMA-GENERATOR by Jeon JaeHyeong:
+https://github.com/tinywind/GRAPHQL-SCHEMA-GENERATOR
+
+That project is licensed under the Apache License, Version 2.0.
+The original implementation is not bundled as a runtime dependency.

@@ -1,0 +1,54 @@
+name: Publish crates.io
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact release version (for example 0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: crates-io
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: v${{ inputs.version }}
+      - name: Verify tag/version
+        run: |
+          version="$(python3 - <<'PY'
+          import tomllib
+          with open("Cargo.toml", "rb") as f:
+              print(tomllib.load(f)["workspace"]["package"]["version"])
+          PY
+          )"
+          test "$version" = "${{ inputs.version }}"
+      - name: Install pinned Rust
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal
+          rustup default 1.99.1
+      - name: Authenticate to crates.io with OIDC
+        id: auth
+        uses: rust-lang/crates-io-auth-action@v1.0.5
+      - name: Publish core
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: cargo publish -p postgres-graphql-schema
+      - name: Wait for core index propagation
+        run: |
+          for attempt in {1..30}; do
+            cargo info "postgres-graphql-schema@${{ inputs.version }}" >/dev/null 2>&1 && exit 0
+            sleep 10
+          done
+          echo "core crate did not appear in the crates.io index" >&2
+          exit 1
+      - name: Publish Cargo subcommand
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: cargo publish -p cargo-graphql-schema

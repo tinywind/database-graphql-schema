@@ -1,0 +1,9 @@
+/target/
+.tmp/
+.env
+.env.*
+!.env.example
+.claude/reports/
+.DS_Store
+.idea/
+.vscode/
