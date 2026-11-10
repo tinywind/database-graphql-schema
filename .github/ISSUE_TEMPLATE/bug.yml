@@ -19,13 +19,27 @@ body:
   - type: input
     id: version
     attributes:
-      label: postgres-graphql-schema version
+      label: database-graphql-schema version
+    validations:
+      required: true
+  - type: dropdown
+    id: dbms
+    attributes:
+      label: DBMS
+      options:
+        - PostgreSQL
+        - MySQL
+        - MariaDB
+        - SQLite
+        - Other / requested backend
     validations:
       required: true
   - type: input
-    id: postgres
+    id: dbms_version
     attributes:
-      label: PostgreSQL version
+      label: DBMS version
+    validations:
+      required: true
   - type: textarea
     id: fixture
     attributes:

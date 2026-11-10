@@ -5,7 +5,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
 image="postgres:18.6"
-name="postgres-graphql-schema-test-$$"
+name="database-graphql-schema-test-$$"
 password="fixture-password"
 database="graphql_schema_test"
 
@@ -32,7 +32,7 @@ docker exec -i "$name" psql -v ON_ERROR_STOP=1 -U postgres -d "$database"   < fi
 port="$(docker port "$name" 5432/tcp | head -1 | sed 's/.*://')"
 export TEST_DATABASE_URL="postgresql://postgres:${password}@127.0.0.1:${port}/${database}"
 
-cargo test -p postgres-graphql-schema --test postgres_integration -- --ignored
+cargo test -p database-graphql-schema --test postgres_integration -- --ignored
 cargo test -p cargo-graphql-schema --test functional -- --ignored
 scripts/verify-seaorm.sh
 

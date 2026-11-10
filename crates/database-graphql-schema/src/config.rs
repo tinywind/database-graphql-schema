@@ -8,6 +8,18 @@ use serde::Deserialize;
 
 use crate::{Error, Result};
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum DatabaseDriver {
+    #[default]
+    Auto,
+    #[serde(alias = "postgresql")]
+    Postgres,
+    #[serde(alias = "mariadb")]
+    Mysql,
+    Sqlite,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -27,14 +39,16 @@ pub struct Config {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct DatabaseConfig {
-    pub schema: String,
+    pub driver: DatabaseDriver,
+    pub schema: Option<String>,
     pub url_env: String,
 }
 
 impl Default for DatabaseConfig {
     fn default() -> Self {
         Self {
-            schema: "public".to_owned(),
+            driver: DatabaseDriver::Auto,
+            schema: None,
             url_env: "DATABASE_URL".to_owned(),
         }
     }
@@ -130,13 +144,13 @@ impl Config {
     }
 
     fn validate(&mut self) -> Result<()> {
-        self.database.schema = self.database.schema.trim().to_owned();
+        self.database.schema = self
+            .database
+            .schema
+            .take()
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty());
         self.database.url_env = self.database.url_env.trim().to_owned();
-        if self.database.schema.is_empty() {
-            return Err(Error::InvalidConfig(
-                "database.schema must not be blank".to_owned(),
-            ));
-        }
         if self.database.url_env.is_empty() {
             return Err(Error::InvalidConfig(
                 "database.url_env must not be blank".to_owned(),
@@ -175,7 +189,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_minimal_toml_with_defaults() {
+    fn parses_minimal_toml_with_database_auto_detection() {
         let config = Config::from_toml(
             r#"
             [generator]
@@ -186,7 +200,8 @@ mod tests {
             "#,
         )
         .unwrap();
-        assert_eq!(config.database.schema, "public");
+        assert_eq!(config.database.driver, DatabaseDriver::Auto);
+        assert_eq!(config.database.schema, None);
         assert_eq!(config.database.url_env, "DATABASE_URL");
         assert!(config.columns.exclude_foreign_keys);
         assert!(config.columns.keep_primary_keys);
@@ -194,18 +209,31 @@ mod tests {
     }
 
     #[test]
-    fn rejects_blank_schema() {
-        let error = Config::from_toml(
+    fn accepts_driver_aliases() {
+        let postgres = Config::from_toml(
             r#"
             [database]
-            schema = " "
+            driver = "postgresql"
             [generator]
             output = "out.graphqls"
             [tables]
             include = [".*"]
             "#,
         )
-        .unwrap_err();
-        assert!(error.to_string().contains("database.schema"));
+        .unwrap();
+        assert_eq!(postgres.database.driver, DatabaseDriver::Postgres);
+
+        let maria = Config::from_toml(
+            r#"
+            [database]
+            driver = "mariadb"
+            [generator]
+            output = "out.graphqls"
+            [tables]
+            include = [".*"]
+            "#,
+        )
+        .unwrap();
+        assert_eq!(maria.database.driver, DatabaseDriver::Mysql);
     }
 }

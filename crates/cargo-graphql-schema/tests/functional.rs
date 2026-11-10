@@ -104,7 +104,7 @@ fn compiled_cli_generate_verify_and_fail_closed_paths() {
     let different = run(&config, "verify", &url);
     assert!(!different.status.success());
     let stderr = String::from_utf8_lossy(&different.stderr);
-    assert!(stderr.contains("differs from the PostgreSQL schema at line"));
+    assert!(stderr.contains("differs from the database schema at line"));
 
     fs::remove_file(&output_file).unwrap();
     let missing = run(&config, "verify", &url);
@@ -131,7 +131,7 @@ fn compiled_cli_generate_verify_and_fail_closed_paths() {
 }
 
 #[test]
-#[ignore = "network failure smoke test; does not need a live PostgreSQL fixture"]
+#[ignore = "network failure smoke test; does not need a live database fixture"]
 fn connection_failure_redacts_password() {
     let temp = tempfile::tempdir().unwrap();
     let config = write_config(temp.path(), "");

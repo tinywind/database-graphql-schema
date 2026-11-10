@@ -2,15 +2,15 @@ SHELL := bash
 
 .DEFAULT_GOAL := help
 
-.PHONY: help bootstrap hooks-install format format-check test test-postgres security package publish-dry-run verify-push verify clean
+.PHONY: help bootstrap hooks-install format format-check test test-databases test-postgres test-mysql-family test-sqlite security package publish-dry-run verify-push verify clean
 
 help:
 	@printf '%s\n' \
-	  'make bootstrap    Fetch dependencies and install repository hooks' \
-	  'make verify-push  Run DB-independent formatting/lint/test/doc/package gates' \
-	  'make verify       Run full PostgreSQL, SeaORM, security and package gates' \
-	  'make test-postgres Run PostgreSQL 18.6 integration/functional/compatibility tests' \
-	  'make security     Run cargo-deny and cargo-audit'
+	  'make bootstrap       Fetch dependencies and install repository hooks' \
+	  'make verify-push     Run database-independent formatting/lint/test/doc/package gates' \
+	  'make verify          Run all DBMS, SeaORM, security and package gates' \
+	  'make test-databases  Run PostgreSQL, MySQL, MariaDB and SQLite compatibility' \
+	  'make security        Run cargo-deny and cargo-audit'
 
 bootstrap:
 	@command -v cargo >/dev/null
@@ -34,6 +34,15 @@ test:
 test-postgres:
 	@scripts/verify-postgres.sh
 
+test-mysql-family:
+	@scripts/verify-mysql-family.sh
+
+test-sqlite:
+	@scripts/verify-sqlite.sh
+
+test-databases:
+	@scripts/verify-databases.sh
+
 security:
 	@command -v cargo-deny >/dev/null || { echo 'cargo-deny is required (pinned: 0.20.2)' >&2; exit 1; }
 	@command -v cargo-audit >/dev/null || { echo 'cargo-audit is required (pinned: 0.23.0)' >&2; exit 1; }
@@ -54,7 +63,7 @@ verify-push: format-check
 	@$(MAKE) publish-dry-run
 
 verify: verify-push
-	@$(MAKE) test-postgres
+	@$(MAKE) test-databases
 	@$(MAKE) security
 
 clean:

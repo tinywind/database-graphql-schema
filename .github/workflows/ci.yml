@@ -32,41 +32,18 @@ jobs:
           scripts/package.sh
           scripts/publish-dry-run.sh
 
-  postgres:
+  databases:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:18.6
-        env:
-          POSTGRES_PASSWORD: fixture-password
-          POSTGRES_DB: graphql_schema_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d graphql_schema_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
-    env:
-      TEST_DATABASE_URL: postgresql://postgres:fixture-password@127.0.0.1:5432/graphql_schema_test
-      PGPASSWORD: fixture-password
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Install pinned Rust
         run: |
           rustup toolchain install 1.99.1 --profile minimal
           rustup default 1.99.1
-      - name: Apply PostgreSQL 18.6 fixture
-        run: |
-          docker run --rm -i --network host -e PGPASSWORD="$PGPASSWORD" postgres:18.6             psql -h 127.0.0.1 -U postgres -d graphql_schema_test -v ON_ERROR_STOP=1             < fixtures/postgres/fixture.sql
       - name: Install SeaORM compatibility oracle
         run: cargo install sea-orm-cli --version 2.0.4 --locked
-      - name: PostgreSQL and CLI tests
-        run: |
-          cargo test -p postgres-graphql-schema --test postgres_integration -- --ignored
-          cargo test -p cargo-graphql-schema --test functional -- --ignored
-      - name: SeaORM compatibility
-        run: scripts/verify-seaorm.sh
+      - name: PostgreSQL, MySQL, MariaDB and SQLite compatibility
+        run: scripts/verify-databases.sh
 
   security:
     runs-on: ubuntu-latest

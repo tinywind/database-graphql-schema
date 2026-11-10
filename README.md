@@ -1,30 +1,56 @@
-# postgres-graphql-schema
+# database-graphql-schema
 
-A Rust-native PostgreSQL-to-GraphQL SDL generator for database-backed entity types and enums.
+Rust-native database-to-GraphQL SDL generation for database-backed entity types and native enums.
 
-The migrated PostgreSQL logical schema is the persisted-entity source of truth:
+The migrated relational database schema is the persisted-entity source of truth:
 
 ```text
-PostgreSQL logical schema
-├─ SeaORM DB-first codegen → Rust Entity / Enum
-└─ postgres-graphql-schema → GraphQL entity / enum SDL
+migrated relational database schema
+├─ SeaORM DB-first codegen       → Rust Entity / Enum
+└─ database-graphql-schema       → GraphQL base entity / enum SDL
 ```
 
-The project is deliberately **not** an ORM, GraphQL server framework, or CRUD API generator. It generates the structural base that a consumer can extend with its own capability contract.
+This project is deliberately **not** an ORM, GraphQL server framework, or automatic CRUD API. It generates the structural base entity contract that a consumer can extend with handwritten capability SDL.
+
+## Supported databases
+
+The 0.2.x line has real integration fixtures and SeaORM 2.0.4 compatibility gates for:
+
+| Database | Tested release | Metadata/features |
+| --- | --- | --- |
+| PostgreSQL | 18.6 | schema enums, comments, arrays/multidimensional arrays, PK/FK, numeric metadata |
+| MySQL | 26.10.0 | inline ENUM, table/column comments, PK/FK, numeric metadata |
+| MariaDB | 13.0.2 | MySQL-protocol adapter, inline ENUM, comments, PK/FK, numeric metadata |
+| SQLite | 3.54.1 (bundled via rusqlite 0.41.1) | tables/columns, PK/FK, declared types; SQLite has no native schema enum/comment catalog |
+
+SQLite metadata uses patched bundled SQLite 3.54.1 through rusqlite 0.41.1; PostgreSQL/MySQL-family metadata uses SQLx 0.9.0.
+
+The production metadata layer is adapter-based. Additional DBMSes can be added without changing the generator/rule/render core. Oracle and SQL Server are **not** claimed as supported in 0.2.x because they do not yet have integration and compatibility fixtures.
 
 ## What it generates
 
-- PostgreSQL tables as GraphQL object types.
-- Public scalar columns selected by fail-closed rules.
-- PostgreSQL enums referenced by generated fields, plus explicitly selected enums.
-- Column nullability.
-- PostgreSQL arrays, including multidimensional arrays.
-- Table, column, and enum comments as GraphQL descriptions.
-- Deterministically sorted declarations with database column order preserved.
+Automatically generated:
 
-It does **not** generate relations, computed fields, Query, Mutation, Subscription, input objects, authorization, pagination semantics, or business projections. Those belong to the consumer.
+- selected database tables as GraphQL object types;
+- selected scalar columns;
+- database nullability;
+- native enums where the DBMS has them;
+- PostgreSQL arrays, including multidimensional arrays;
+- table/column/enum comments where the DBMS catalog stores them;
+- deterministic canonical SDL.
 
-A typical downstream shape is:
+Not generated:
+
+- relations;
+- computed fields;
+- Query / Mutation / Subscription;
+- input objects;
+- authorization;
+- business projections;
+- pagination semantics;
+- service workflows.
+
+A downstream project can therefore keep:
 
 ```text
 entities.graphqls
@@ -38,33 +64,35 @@ GraphQL operation generation
         └─ Android Apollo Kotlin codegen
 ```
 
-This repository has no Node, Apollo, Gradle, JVM, Java, or Kotlin runtime dependency.
+This repository has no Gradle/JVM/Node runtime dependency and never connects to a database from `build.rs`.
 
-## Install
+## Distribution
 
-The Cargo subcommand is published as `cargo-graphql-schema`:
+Reusable library:
 
-```bash
-cargo install cargo-graphql-schema --version 0.1.0 --locked
+```toml
+[dependencies]
+database-graphql-schema = "0.2.0"
 ```
 
-Cargo discovers binaries named `cargo-<name>`, so the installed binary can be invoked naturally:
+Cargo subcommand:
 
 ```bash
+cargo install cargo-graphql-schema --version 0.2.0 --locked
+
 cargo graphql-schema generate --config graphql-schema.toml
 cargo graphql-schema verify --config graphql-schema.toml
 cargo graphql-schema print --config graphql-schema.toml
 ```
 
-The reusable library crate is `postgres-graphql-schema`.
-
 ## Configuration
 
-`graphql-schema.toml`:
+The DBMS is normally inferred from `DATABASE_URL`; `driver` can be set explicitly.
 
 ```toml
 [database]
-schema = "public"
+driver = "auto" # auto | postgres | mysql | sqlite
+schema = "public" # optional: PostgreSQL default public, SQLite default main, MySQL defaults URL database
 url_env = "DATABASE_URL"
 
 [generator]
@@ -72,20 +100,20 @@ output = "src/graphql/entities.graphqls"
 descriptions = true
 
 [tables]
-# At least one include rule is required.
+# At least one include is mandatory.
 include = [".*"]
 exclude = ["internal_.*"]
 
 [columns]
 exclude_foreign_keys = true
 keep_primary_keys = true
-# An explicit include may expose an FK column.
+# Explicit include can re-expose an FK.
 include = ["project\\.owner_id"]
-# Exclude wins over every include/filtering rule.
+# Exclude always wins.
 exclude = ["account\\.secret_hash"]
 
 [types.sql]
-# Optional SQL type mappings replace built-ins.
+# DBMS type-name override.
 jsonb = "String"
 
 [[types.override]]
@@ -98,59 +126,68 @@ non_null = ["legacy_record\\.required_value"]
 
 [enums]
 include_unreferenced = false
-include = ["explicitly_public_enum"]
+include = []
 ```
 
-All regex rules are case-insensitive **full matches**, not substring searches. Table excludes win over includes. Column excludes win over explicit includes. FK columns are hidden by default; FK columns that are also PK columns remain unless `keep_primary_keys = false`.
+All configured regex rules are case-insensitive **full matches**. A configured rule that matches nothing is an error.
 
-The database URL is not required in the config. Resolution order is:
+### Database URLs
 
-1. `--database-url` (supported, but not recommended for secrets because shell history/process inspection may expose it),
-2. `--database-url-file`,
-3. `--database-url-env NAME`,
-4. the environment variable named by `database.url_env` (default `DATABASE_URL`).
+```bash
+# PostgreSQL
+DATABASE_URL='postgresql://user:password@localhost/app'
 
-Connection errors are sanitized so the full DSN, password, and query values are not emitted by this tool.
+# MySQL / MariaDB
+DATABASE_URL='mysql://user:password@localhost/app'
+
+# SQLite
+DATABASE_URL='sqlite:///absolute/path/app.sqlite'
+```
+
+`mariadb://` is also accepted and normalized to the MySQL protocol backend.
+
+The preferred secret sources are the configured environment variable or `--database-url-file`. `--database-url` is supported but can expose credentials through shell/process inspection. Connection errors sanitize full DSNs, passwords, and query values.
 
 ## Generate
 
 ```bash
-DATABASE_URL='postgresql://...' cargo graphql-schema generate --config graphql-schema.toml
+cargo graphql-schema generate --config graphql-schema.toml
 ```
 
-Generation reads live PostgreSQL catalog metadata and replaces the configured output with canonical SDL. It never runs during an ordinary `cargo build`.
+Generation introspects the current migrated logical schema and writes canonical SDL to the configured output.
 
 ## Verify
 
 ```bash
-DATABASE_URL='postgresql://...' cargo graphql-schema verify --config graphql-schema.toml
+cargo graphql-schema verify --config graphql-schema.toml
 ```
 
-Verification regenerates SDL in memory and compares it byte-for-byte with the committed/generated output.
+Verification regenerates SDL in memory and compares it byte-for-byte with the output file.
 
 It fails when:
 
 - the output file is missing;
-- the content differs;
-- a configured rule is stale;
-- a selected SQL type has no mapping;
-- a GraphQL name/literal is invalid or reserved;
-- two database objects map to the same GraphQL type/field name.
+- contents differ;
+- a rule is stale;
+- an SQL type is unsupported and has no explicit mapping;
+- nullable and non-null overrides conflict;
+- a GraphQL name/value is invalid or reserved;
+- multiple database objects collapse to an incompatible GraphQL name.
 
-For a content mismatch, the first differing line and expected/actual text are reported.
+For differing output the first changed line plus expected/actual text is reported.
 
-## Fail-closed rules
+## Fail-closed contract
 
-Configuration is part of the public-schema contract. A rule that no longer matches is therefore an error rather than a no-op.
-
-For example, if:
+Configuration expresses API decisions, not best-effort hints. For example:
 
 ```toml
 [columns]
 exclude = ["user\\.password_hash"]
 ```
 
-stops matching because the database column was renamed, generation fails. The same stale-rule check applies to:
+If that field is renamed in the database, generation fails instead of silently exposing a different shape or leaving a dead rule.
+
+Stale matching is enforced for:
 
 - `tables.include`
 - `tables.exclude`
@@ -161,45 +198,58 @@ stops matching because the database column was renamed, generation fails. The sa
 - `types.non_null`
 - `enums.include`
 
-Unsupported SQL types also fail closed. Add an explicit mapping/override or exclude the column.
+Unknown DBMS types never fall back to `String`. Add a mapping/override or exclude the column explicitly.
 
-## Default PostgreSQL mappings
+## DBMS type behavior
 
-| PostgreSQL | GraphQL |
-| --- | --- |
-| `uuid` | `UUID` |
-| varchar/char/text/name/citext/inet/cidr/macaddr/macaddr8 | `String` |
-| smallint/integer | `Int` |
-| bigint | `Long` |
-| boolean | `Boolean` |
-| real/double precision | `Float` |
-| numeric/decimal | `BigDecimal` |
-| date | `Date` |
-| timestamp | `LocalDateTime` |
-| timestamptz | `DateTime` |
-| time | `LocalTime` |
-| timetz | `Time` |
-| json/jsonb | `JSON` |
-| PostgreSQL enum | generated GraphQL enum |
-| array | nested GraphQL list |
+### PostgreSQL
 
-The generator emits scalar *uses* but does not declare custom GraphQL scalars. The GraphQL runtime/capability schema owns scalar definitions and serialization.
+Key defaults include `uuid→UUID`, small/integer→`Int`, bigint→`Long`, numeric/decimal→`BigDecimal`, temporal types, JSON/JSONB, bytea, native enums, and arrays.
 
-### Numeric compatibility decision
+PostgreSQL array dimensions are preserved from the database catalog. SeaORM 2.0.4 currently renders a PostgreSQL `integer[][]` model as `Vec<i32>`; this generator deliberately keeps the DB truth as `[[Int!]!]`. The compatibility gate makes that known difference visible.
 
-The legacy JVM generator 0.1.1 narrowed `numeric(scale=0)` to `Int`, `Long`, or `BigInteger` using precision because that mirrored jOOQ POJO codegen. SeaORM 2.0.x generates PostgreSQL numeric as Rust `Decimal` regardless of scale. This Rust generator therefore preserves decimal semantics as `BigDecimal` for every numeric/decimal column. A consumer can override it explicitly when its API contract intentionally narrows a value.
+### MySQL / MariaDB
 
-The checked compatibility fixture maps numeric explicitly to `BigDecimal` so every other legacy behavior can be compared byte-for-byte.
+Integer widths, Decimal, temporal types, JSON/text, binary/blob and inline `ENUM` are supported.
 
-## SeaORM alignment
+MySQL/MariaDB inline enum names follow SeaORM's column-name convention: a `status ENUM(...)` column produces GraphQL `Status`. Compatible same-named enums are deduplicated; incompatible ones fail closed.
 
-SeaORM 2.0.x codegen derives table/entity and enum names with upper-camel casing and column fields with snake casing. This project derives GraphQL object/enum names from the same database names and GraphQL field names with lower-camel casing.
+MySQL's `BOOLEAN` is an alias of `TINYINT(1)`, and information_schema does not retain whether the original DDL used the word `BOOLEAN`. SeaORM 2.0.4 therefore generates `i8`; the default GraphQL mapping is `Int`. If the application owns semantic boolean intent, use a column override to `Boolean`.
 
-Release verification runs SeaORM's actual CLI against the same PostgreSQL fixture and checks table/column/enum/type/nullability alignment. This is a golden compatibility gate: a future SeaORM naming/type drift becomes a test failure instead of silently changing an API.
+MariaDB exposes its JSON alias as LONGTEXT in current catalog/codegen behavior, so the default GraphQL field is `String`, matching SeaORM's generated Rust `String`. MySQL native JSON maps to `JSON`.
 
-## Consumer integration
+### SQLite
 
-Keep generation explicit in the consumer build graph:
+SQLite is typed by declared type/affinity rather than a server catalog. The adapter follows the same DB-first type normalization used by the SeaORM/sea-schema ecosystem. SQLite `INTEGER` maps to GraphQL `Long` because the DB value and SeaORM model are signed 64-bit.
+
+For explicit strong types with SeaORM-compatible mapping, declarations such as `uuid_text`, `json_text`, `date_text`, `datetime_text`, and `boolean` can be used. Arbitrary custom declarations remain fail-closed unless configured.
+
+SQLite does not persist table/column comments or schema-level enums in its standard catalog, so those features are not fabricated.
+
+## Numeric compatibility
+
+The old JVM PostgreSQL generator 0.1.1 narrowed `numeric(scale=0)` according to precision to mirror jOOQ. SeaORM 2.0.x represents PostgreSQL/MySQL/SQLite decimal columns as Rust `Decimal`; this project therefore defaults numeric/decimal to GraphQL `BigDecimal`.
+
+The PostgreSQL legacy compatibility fixture explicitly maps numeric to BigDecimal so all other legacy behavior can be checked byte-for-byte.
+
+## SeaORM compatibility
+
+SeaORM is a black-box compatibility oracle, not a runtime dependency.
+
+Release verification runs actual `sea-orm-cli 2.0.4` DB-first codegen against the same synthetic fixtures for PostgreSQL, MySQL, MariaDB, and SQLite, then compares:
+
+- table/entity naming;
+- column naming;
+- native enum identity/value behavior;
+- nullability;
+- PK/FK classification;
+- numeric, temporal, JSON/text, binary, UUID and arrays where supported.
+
+This makes ORM codegen drift visible without coupling production code to private SeaORM internals.
+
+## Consumer build integration
+
+Keep live DB generation explicit:
 
 ```make
 generate:
@@ -209,25 +259,25 @@ verify:
 	cargo graphql-schema verify --config graphql-schema.toml
 ```
 
-Do not put a live database connection in `build.rs`.
+Do not make ordinary `cargo build` depend on a live database.
 
 ## Library API
 
-The `postgres-graphql-schema` crate exposes:
+The `database-graphql-schema` crate exposes:
 
-- `Config::from_path` / `Config::from_toml`
-- `PostgresMetadataReader`
-- `Generator` for in-memory schema models
-- `render_from_database`
-- `generate_from_database`
-- `verify_from_database`
-- naming helpers used by compatibility tests
+- `Config::from_path` / `Config::from_toml`;
+- `DatabaseMetadataReader`;
+- `detect_database_kind`;
+- `Generator` for in-memory `SchemaModel`;
+- `render_from_database`;
+- `generate_from_database`;
+- `verify_from_database`.
 
-All expected configuration/schema failures return typed `Error` values; user errors are not modeled as panics.
+Expected config/schema errors use typed `Error`; predictable user errors are not modeled as panics.
 
 ## Development
 
-Prerequisites: Rust 1.99.1 and Docker.
+Prerequisites: Rust 1.99.1, Docker for server DB integration, and SeaORM CLI 2.0.4 for compatibility verification.
 
 ```bash
 make bootstrap
@@ -235,10 +285,8 @@ make verify-push
 make verify
 ```
 
-`make verify-push` is the DB-independent pre-push gate. `make verify` additionally starts an isolated PostgreSQL 18.6 fixture container and runs PostgreSQL, CLI, determinism, legacy-generator, and SeaORM compatibility verification.
-
-Security/license checks use `cargo-deny` and `cargo-audit`.
+`make verify-push` is database-independent. `make verify` additionally validates all supported database families and runs security/license checks.
 
 ## License and attribution
 
-Apache-2.0. Behavior compatibility was developed from the Apache-2.0 `tinywind/GRAPHQL-SCHEMA-GENERATOR` 0.1.1 implementation and tests. See [NOTICE](NOTICE) and [docs/compatibility.md](docs/compatibility.md).
+Apache-2.0. PostgreSQL behavior compatibility was developed from the Apache-2.0 `tinywind/GRAPHQL-SCHEMA-GENERATOR` 0.1.1 implementation and tests. See [NOTICE](NOTICE) and [docs/compatibility.md](docs/compatibility.md).

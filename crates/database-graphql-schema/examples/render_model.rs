@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
-use postgres_graphql_schema::{
-    ColumnModel, ColumnsConfig, Config, DatabaseConfig, EnumsConfig, Generator, GeneratorConfig,
-    SchemaModel, TableConfig, TableModel, TypesConfig,
+use database_graphql_schema::{
+    ColumnModel, ColumnsConfig, Config, DatabaseConfig, DatabaseKind, EnumsConfig, Generator,
+    GeneratorConfig, SchemaModel, TableConfig, TableModel, TypesConfig,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -23,6 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let schema = SchemaModel {
+        database_kind: DatabaseKind::Postgres,
         schema_name: "public".to_owned(),
         enums: vec![],
         tables: vec![TableModel {

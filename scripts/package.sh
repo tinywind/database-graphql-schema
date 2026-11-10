@@ -8,10 +8,10 @@ with open("Cargo.toml", "rb") as f:
 PY
 )"
 
-cargo package -p postgres-graphql-schema --allow-dirty
+cargo package -p database-graphql-schema --allow-dirty
 
-if (cd /tmp && cargo info "postgres-graphql-schema@$version" >/dev/null 2>&1); then
+if (cd /tmp && cargo info "database-graphql-schema@$version" >/dev/null 2>&1); then
   cargo package -p cargo-graphql-schema --allow-dirty
 else
-  echo "cargo-graphql-schema package verification deferred until postgres-graphql-schema $version exists in crates.io (first-release dependency ordering)."
+  echo "cargo-graphql-schema package verification deferred until database-graphql-schema $version exists in crates.io (first-release dependency ordering)."
 fi

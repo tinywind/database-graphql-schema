@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Exact release version (for example 0.1.0)
+        description: Exact release version (for example 0.2.0)
         required: true
         type: string
 
@@ -39,11 +39,11 @@ jobs:
       - name: Publish core
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-        run: cargo publish -p postgres-graphql-schema
+        run: cargo publish -p database-graphql-schema
       - name: Wait for core index propagation
         run: |
           for attempt in {1..30}; do
-            cargo info "postgres-graphql-schema@${{ inputs.version }}" >/dev/null 2>&1 && exit 0
+            cargo info "database-graphql-schema@${{ inputs.version }}" >/dev/null 2>&1 && exit 0
             sleep 10
           done
           echo "core crate did not appear in the crates.io index" >&2

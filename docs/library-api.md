@@ -1,19 +1,21 @@
 # Library API
 
-The `postgres-graphql-schema` crate is the reusable layer behind the Cargo subcommand. Its public API is intentionally small.
+The `database-graphql-schema` crate is the reusable layer behind the Cargo subcommand. Its public API is intentionally small.
 
 ## Configuration
 
-`Config::from_path(path)` parses TOML, validates required values, and resolves a relative `generator.output` relative to the config file.
+`Config::from_path(path)` parses TOML, validates values, and resolves relative output paths against the config file.
 
-`Config::from_toml(source)` is useful for embedded tooling and tests. It leaves relative output paths relative to the caller's working directory.
+`Config::from_toml(source)` is suitable for embedded tooling/tests.
 
-## Live PostgreSQL helpers
+`DatabaseConfig.driver` can be `auto`, `postgres`, `mysql`, or `sqlite`. Auto mode recognizes PostgreSQL, MySQL/MariaDB and SQLite URL schemes.
 
-All live-database helpers are async and accept a database URL supplied by the caller:
+## Live database helpers
+
+All live helpers are async and accept the database URL explicitly:
 
 ```rust,no_run
-# use postgres_graphql_schema::{Config, render_from_database};
+# use database_graphql_schema::{Config, render_from_database};
 # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 let config = Config::from_path("graphql-schema.toml")?;
 let url = std::env::var("DATABASE_URL")?;
@@ -23,24 +25,26 @@ println!("{sdl}");
 # }
 ```
 
-- `render_from_database` reads metadata and returns canonical SDL without writing.
-- `generate_from_database` writes the configured output and returns counts/path.
-- `verify_from_database` compares canonical SDL with the configured output and returns `Verification`.
+- `render_from_database`: canonical SDL without writing.
+- `generate_from_database`: write output and return path/counts.
+- `verify_from_database`: compare canonical SDL with output.
+- `DatabaseMetadataReader::read`: resolve the configured backend and produce `SchemaModel`.
+- `detect_database_kind`: URL-based backend detection.
 
-The library never reads `DATABASE_URL` itself. Environment/file/CLI credential resolution belongs to the CLI or consumer, which makes secret handling explicit.
+The library never reads `DATABASE_URL` itself. Environment/file/CLI secret resolution belongs to the caller.
 
 ## In-memory generation
 
-`PostgresMetadataReader` converts PostgreSQL catalog metadata into `SchemaModel`. A caller can also construct `SchemaModel` directly and use `Generator::render`, `Generator::generate`, or `Generator::verify`.
+A caller can construct a backend-independent `SchemaModel` and call `Generator::render`, `Generator::generate`, or `Generator::verify`. This separation keeps rule/type/naming/render logic testable without a live DBMS.
 
-This separation keeps rule/type/naming/render behavior testable without a live database.
+`SchemaModel.database_kind` controls built-in SQL type mapping. Metadata adapters normalize backend-specific catalogs into that common model.
 
 ## Errors
 
-Expected user/config/schema failures return `postgres_graphql_schema::Error`. Production generation does not use panics for expected errors.
+Expected config/schema/metadata failures return `database_graphql_schema::Error`. Production generation does not panic for expected user errors.
 
-Database connection errors are sanitized before becoming public errors; the original DSN/password/query values are not intentionally included.
+Connection errors sanitize the original DSN/password/query values before exposure.
 
 ## SemVer
 
-The 0.x series may evolve public Rust API with minor releases. Observable generator/CLI contract changes are documented in CHANGELOG.md and docs/compatibility.md and require compatibility tests.
+The 0.x series may evolve Rust API with minor releases. Observable generator/CLI contract changes are documented in CHANGELOG.md and docs/compatibility.md and require backend compatibility tests.

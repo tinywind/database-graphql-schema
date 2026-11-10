@@ -1,0 +1,22 @@
+[database]
+driver = "auto"
+url_env = "TEST_MYSQL_URL"
+
+[generator]
+output = "actual.graphqls"
+descriptions = true
+header = ""
+
+[tables]
+include = [".*"]
+exclude = ["internal_.*"]
+
+[columns]
+exclude_foreign_keys = true
+keep_primary_keys = true
+include = ["project\\.owner_id"]
+exclude = ["account\\.secret_hash", "unsupported_record\\.payload"]
+
+[enums]
+include_unreferenced = false
+include = []

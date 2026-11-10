@@ -3,7 +3,7 @@
 use std::{ffi::OsString, fs, path::PathBuf, process::ExitCode};
 
 use clap::{Parser, Subcommand};
-use postgres_graphql_schema::{
+use database_graphql_schema::{
     Config, Verification, generate_from_database, render_from_database, verify_from_database,
 };
 
@@ -12,17 +12,17 @@ use postgres_graphql_schema::{
     name = "cargo graphql-schema",
     bin_name = "cargo graphql-schema",
     version,
-    about = "Generate and verify GraphQL entity SDL from PostgreSQL"
+    about = "Generate and verify GraphQL entity SDL from relational database schemas"
 )]
 struct Cli {
     #[arg(long, global = true, default_value = "graphql-schema.toml")]
     config: PathBuf,
 
-    /// PostgreSQL URL. Prefer --database-url-file or an environment variable so secrets do not enter shell history.
+    /// Database URL. Prefer --database-url-file or an environment variable so secrets do not enter shell history.
     #[arg(long, global = true)]
     database_url: Option<String>,
 
-    /// Read the PostgreSQL URL from a file.
+    /// Read the database URL from a file.
     #[arg(long, global = true)]
     database_url_file: Option<PathBuf>,
 
@@ -77,7 +77,7 @@ async fn run() -> Result<(), String> {
             .map_err(|error| error.to_string())?
         {
             Verification::Match { file } => {
-                eprintln!("{} matches the PostgreSQL schema", file.display());
+                eprintln!("{} matches the database schema", file.display());
             }
             Verification::Missing { file } => {
                 return Err(format!(
@@ -93,7 +93,7 @@ async fn run() -> Result<(), String> {
                 actual,
             } => {
                 return Err(format!(
-                    "{} differs from the PostgreSQL schema at line {line}\n  expected: {}\n  actual:   {}\nrun cargo graphql-schema generate --config {}",
+                    "{} differs from the database schema at line {line}\n  expected: {}\n  actual:   {}\nrun cargo graphql-schema generate --config {}",
                     file.display(),
                     expected.as_deref().unwrap_or("<end of file>"),
                     actual.as_deref().unwrap_or("<end of file>"),

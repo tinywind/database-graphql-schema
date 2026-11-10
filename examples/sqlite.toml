@@ -1,0 +1,22 @@
+[database]
+driver = "sqlite"
+schema = "main"
+url_env = "DATABASE_URL"
+
+[generator]
+output = "entities.graphqls"
+descriptions = true
+
+[tables]
+include = [".*"]
+exclude = []
+
+[columns]
+exclude_foreign_keys = true
+keep_primary_keys = true
+include = []
+exclude = []
+
+[enums]
+include_unreferenced = false
+include = []

@@ -8,9 +8,9 @@ repository.workspace = true
 homepage.workspace = true
 documentation = "https://docs.rs/cargo-graphql-schema"
 authors.workspace = true
-description = "Cargo subcommand and CLI for generating GraphQL entity SDL from PostgreSQL schemas"
+description = "Cargo subcommand and CLI for generating GraphQL entity SDL from relational databases"
 readme = "../../README.md"
-keywords = ["graphql", "postgresql", "codegen", "cargo", "seaorm"]
+keywords = ["graphql", "database", "codegen", "cargo", "seaorm"]
 categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
@@ -19,7 +19,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap.workspace = true
-postgres-graphql-schema = { version = "0.1.0", path = "../postgres-graphql-schema" }
+database-graphql-schema = { version = "0.2.0", path = "../database-graphql-schema" }
 tokio.workspace = true
 
 [dev-dependencies]

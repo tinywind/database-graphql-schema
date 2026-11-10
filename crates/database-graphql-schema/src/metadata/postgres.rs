@@ -1,39 +1,36 @@
 use std::{collections::BTreeMap, time::Duration};
 
-use sqlx::{PgPool, Row, postgres::PgPoolOptions};
+use sqlx::{Row, postgres::PgPoolOptions};
 
 use crate::{
-    ColumnModel, EnumModel, Error, Result, SchemaModel, TableModel, error::database_error,
+    ColumnModel, DatabaseKind, EnumModel, Error, Result, SchemaModel, TableModel,
+    error::database_error, naming::type_name,
 };
 
-#[derive(Clone, Debug, Default)]
-pub struct PostgresMetadataReader;
+use super::non_blank;
 
-impl PostgresMetadataReader {
-    pub async fn read(&self, database_url: &str, schema: &str) -> Result<SchemaModel> {
-        let pool = PgPoolOptions::new()
-            .max_connections(2)
-            .acquire_timeout(Duration::from_secs(10))
-            .connect(database_url)
-            .await
-            .map_err(|error| database_error(database_url, "connection failed", error))?;
-        let result = self.read_pool(&pool, schema).await;
-        pool.close().await;
-        result
-    }
+pub(super) async fn read(database_url: &str, schema: &str) -> Result<SchemaModel> {
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .acquire_timeout(Duration::from_secs(10))
+        .connect(database_url)
+        .await
+        .map_err(|error| database_error(database_url, "PostgreSQL connection failed", error))?;
 
-    pub async fn read_pool(&self, pool: &PgPool, schema: &str) -> Result<SchemaModel> {
+    let result = async {
         let schema_exists: bool =
             sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = $1)")
                 .bind(schema)
-                .fetch_one(pool)
+                .fetch_one(&pool)
                 .await
                 .map_err(|error| {
-                    Error::Database(format!("checking schema visibility failed: {error}"))
+                    Error::Database(format!(
+                        "checking PostgreSQL schema visibility failed: {error}"
+                    ))
                 })?;
         if !schema_exists {
             return Err(Error::Database(format!(
-                "schema '{schema}' is not visible to the database connection"
+                "PostgreSQL schema '{schema}' is not visible to the database connection"
             )));
         }
 
@@ -49,18 +46,15 @@ impl PostgresMetadataReader {
             "#,
         )
         .bind(schema)
-        .fetch_all(pool)
+        .fetch_all(&pool)
         .await
-        .map_err(|error| Error::Database(format!("reading tables failed: {error}")))?;
+        .map_err(|error| Error::Database(format!("reading PostgreSQL tables failed: {error}")))?;
 
         let mut tables: BTreeMap<String, TableModel> = BTreeMap::new();
         for row in table_rows {
-            let name: String = row
-                .try_get("name")
-                .map_err(|error| Error::Database(format!("decoding table name failed: {error}")))?;
-            let comment: Option<String> = row.try_get("comment").map_err(|error| {
-                Error::Database(format!("decoding table comment failed: {error}"))
-            })?;
+            let name: String = row.try_get("name").map_err(decode("table name"))?;
+            let comment: Option<String> =
+                row.try_get("comment").map_err(decode("table comment"))?;
             tables.insert(
                 name.clone(),
                 TableModel {
@@ -77,13 +71,11 @@ impl PostgresMetadataReader {
                    a.attnum::int4 AS column_order,
                    a.attname::text AS name,
                    t.typname::text AS type_name,
-                   tn.nspname::text AS type_schema,
                    t.typtype::text AS type_kind,
                    format_type(a.atttypid, a.atttypmod)::text AS formatted_type,
                    a.attnotnull AS not_null,
                    a.attndims::int4 AS array_dimensions,
                    et.typname::text AS element_type_name,
-                   en.nspname::text AS element_type_schema,
                    et.typtype::text AS element_type_kind,
                    col_description(c.oid, a.attnum) AS comment,
                    ic.numeric_precision::int4 AS numeric_precision,
@@ -106,9 +98,7 @@ impl PostgresMetadataReader {
             JOIN pg_namespace n ON n.oid = c.relnamespace
             JOIN pg_attribute a ON a.attrelid = c.oid
             JOIN pg_type t ON t.oid = a.atttypid
-            JOIN pg_namespace tn ON tn.oid = t.typnamespace
             LEFT JOIN pg_type et ON et.oid = t.typelem AND t.typelem <> 0
-            LEFT JOIN pg_namespace en ON en.oid = et.typnamespace
             LEFT JOIN information_schema.columns ic
               ON ic.table_schema = n.nspname
              AND ic.table_name = c.relname
@@ -121,37 +111,40 @@ impl PostgresMetadataReader {
             "#,
         )
         .bind(schema)
-        .fetch_all(pool)
+        .fetch_all(&pool)
         .await
-        .map_err(|error| Error::Database(format!("reading columns failed: {error}")))?;
+        .map_err(|error| Error::Database(format!("reading PostgreSQL columns failed: {error}")))?;
 
         for row in column_rows {
             let table_name: String = row.try_get("table_name").map_err(decode("table name"))?;
             let table = tables.get_mut(&table_name).ok_or_else(|| {
                 Error::Database(format!(
-                    "column metadata referenced unknown table '{table_name}'"
+                    "PostgreSQL column metadata referenced unknown table '{table_name}'"
                 ))
             })?;
+            let type_name: String = row.try_get("type_name").map_err(decode("column type"))?;
+            let type_kind: String = row.try_get("type_kind").map_err(decode("type kind"))?;
+            let element_type_name: Option<String> = row
+                .try_get("element_type_name")
+                .map_err(decode("array element type"))?;
+            let element_type_kind: Option<String> = row
+                .try_get("element_type_kind")
+                .map_err(decode("array element kind"))?;
             let array_dimensions: i32 = row
                 .try_get("array_dimensions")
                 .map_err(decode("array dimensions"))?;
+
             table.columns.push(ColumnModel {
                 name: row.try_get("name").map_err(decode("column name"))?,
-                type_name: row.try_get("type_name").map_err(decode("column type"))?,
-                type_schema: row.try_get("type_schema").map_err(decode("type schema"))?,
-                type_kind: row.try_get("type_kind").map_err(decode("type kind"))?,
+                enum_key: (type_kind == "e").then(|| type_name.clone()),
+                element_enum_key: (element_type_kind.as_deref() == Some("e"))
+                    .then(|| element_type_name.clone())
+                    .flatten(),
+                type_name,
                 formatted_type: row
                     .try_get("formatted_type")
                     .map_err(decode("formatted type"))?,
-                element_type_name: row
-                    .try_get("element_type_name")
-                    .map_err(decode("array element type"))?,
-                element_type_schema: row
-                    .try_get("element_type_schema")
-                    .map_err(decode("array element schema"))?,
-                element_type_kind: row
-                    .try_get("element_type_kind")
-                    .map_err(decode("array element kind"))?,
+                element_type_name,
                 array_dimensions: usize::try_from(array_dimensions.max(0)).unwrap_or(0),
                 nullable: !row
                     .try_get::<bool, _>("not_null")
@@ -186,9 +179,9 @@ impl PostgresMetadataReader {
             "#,
         )
         .bind(schema)
-        .fetch_all(pool)
+        .fetch_all(&pool)
         .await
-        .map_err(|error| Error::Database(format!("reading enums failed: {error}")))?;
+        .map_err(|error| Error::Database(format!("reading PostgreSQL enums failed: {error}")))?;
 
         let mut enums: BTreeMap<String, EnumModel> = BTreeMap::new();
         for row in enum_rows {
@@ -198,7 +191,8 @@ impl PostgresMetadataReader {
             enums
                 .entry(name.clone())
                 .or_insert_with(|| EnumModel {
-                    name,
+                    rule_name: name.clone(),
+                    graphql_name: type_name(&name),
                     values: Vec::new(),
                     comment: non_blank(comment),
                 })
@@ -207,17 +201,18 @@ impl PostgresMetadataReader {
         }
 
         Ok(SchemaModel {
+            database_kind: DatabaseKind::Postgres,
             schema_name: schema.to_owned(),
             enums: enums.into_values().collect(),
             tables: tables.into_values().collect(),
         })
     }
-}
+    .await;
 
-fn non_blank(value: Option<String>) -> Option<String> {
-    value.filter(|text| !text.trim().is_empty())
+    pool.close().await;
+    result
 }
 
 fn decode(label: &'static str) -> impl FnOnce(sqlx::Error) -> Error {
-    move |error| Error::Database(format!("decoding {label} failed: {error}"))
+    move |error| Error::Database(format!("decoding PostgreSQL {label} failed: {error}"))
 }

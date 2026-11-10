@@ -1,25 +1,26 @@
 [workspace]
 members = [
-    "crates/postgres-graphql-schema",
+    "crates/database-graphql-schema",
     "crates/cargo-graphql-schema",
 ]
 resolver = "3"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.99.1"
 license = "Apache-2.0"
-repository = "https://github.com/tinywind/postgres-graphql-schema"
-homepage = "https://github.com/tinywind/postgres-graphql-schema"
+repository = "https://github.com/tinywind/database-graphql-schema"
+homepage = "https://github.com/tinywind/database-graphql-schema"
 authors = ["tinywind"]
 
 [workspace.dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
 heck = "0.5.0"
 regex = "1.13.1"
+rusqlite = { version = "0.41.1", default-features = false, features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }
-sqlx = { version = "0.9.0", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls"] }
+sqlx = { version = "0.9.0", default-features = false, features = ["postgres", "mysql", "runtime-tokio", "tls-rustls"] }
 thiserror = "2.0.21"
 tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread"] }
 toml = "1.2.1"

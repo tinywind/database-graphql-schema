@@ -2,7 +2,7 @@
 
 use std::{env, path::PathBuf};
 
-use postgres_graphql_schema::{Config, PostgresMetadataReader, render_from_database};
+use database_graphql_schema::{Config, DatabaseKind, DatabaseMetadataReader, render_from_database};
 
 fn database_url() -> String {
     env::var("TEST_DATABASE_URL")
@@ -17,22 +17,23 @@ fn fixture_config() -> Config {
 #[tokio::test]
 #[ignore = "requires TEST_DATABASE_URL with fixtures/postgres/fixture.sql applied"]
 async fn reads_real_postgres_metadata() {
-    let schema = PostgresMetadataReader
-        .read(&database_url(), "public")
+    let schema = DatabaseMetadataReader
+        .read(&database_url(), &fixture_config().database)
         .await
         .unwrap();
 
+    assert_eq!(schema.database_kind, DatabaseKind::Postgres);
     assert_eq!(schema.schema_name, "public");
     let enum_names: Vec<_> = schema
         .enums
         .iter()
-        .map(|value| value.name.as_str())
+        .map(|value| value.rule_name.as_str())
         .collect();
     assert_eq!(enum_names, ["review_status", "unused_state"]);
     let review = schema
         .enums
         .iter()
-        .find(|value| value.name == "review_status")
+        .find(|value| value.rule_name == "review_status")
         .unwrap();
     assert_eq!(review.values, ["PENDING", "APPROVED", "REJECTED"]);
     assert_eq!(review.comment.as_deref(), Some("Review workflow state."));
@@ -76,7 +77,6 @@ async fn reads_real_postgres_metadata() {
         .find(|table| table.name == "unsupported_record")
         .unwrap();
     assert_eq!(unsupported.columns[1].type_name, "unsupported_code");
-    assert_eq!(unsupported.columns[1].type_kind, "d");
 }
 
 #[tokio::test]
@@ -131,8 +131,10 @@ async fn matches_legacy_0_1_1_golden_byte_for_byte() {
 #[ignore = "requires TEST_DATABASE_URL with fixtures/postgres/fixture.sql applied"]
 async fn wrong_schema_fails_without_exposing_database_url() {
     let url = database_url();
-    let error = PostgresMetadataReader
-        .read(&url, "definitely_missing")
+    let mut config = fixture_config();
+    config.database.schema = Some("definitely_missing".to_owned());
+    let error = DatabaseMetadataReader
+        .read(&url, &config.database)
         .await
         .unwrap_err();
     let message = error.to_string();
