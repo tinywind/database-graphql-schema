@@ -35,7 +35,7 @@ jobs:
           rustup default 1.99.1
       - name: Authenticate to crates.io with OIDC
         id: auth
-        uses: rust-lang/crates-io-auth-action@v1.0.5
+        uses: rust-lang/crates-io-auth-action@v1.0.6
       - name: Publish core
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
