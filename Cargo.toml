@@ -18,7 +18,7 @@ authors = ["tinywind"]
 clap = { version = "4.6.7", features = ["derive"] }
 heck = "0.5.0"
 regex = "1.13.1"
-rusqlite = { version = "0.41.1", default-features = false, features = ["bundled"] }
+rusqlite = { version = "0.43.0", default-features = false, features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }
 sqlx = { version = "0.9.0", default-features = false, features = ["postgres", "mysql", "runtime-tokio", "tls-rustls"] }
 thiserror = "2.0.21"
