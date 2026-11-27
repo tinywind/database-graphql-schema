@@ -20,23 +20,23 @@ verify_one() {
   if [[ "$flavor" == "mysql" ]]; then
     docker run -d --name "$name"       -e MYSQL_ROOT_PASSWORD=root-fixture-password       -e MYSQL_DATABASE="$database"       -e MYSQL_USER="$user"       -e MYSQL_PASSWORD="$password"       -P "$image" >/dev/null
     for attempt in $(seq 1 120); do
-      if docker exec "$name" sh -lc "MYSQL_PWD=$password mysql -u$user -D $database -Nse 'SELECT 1'" >/dev/null 2>&1; then
+      if docker exec "$name" sh -lc "MYSQL_PWD=$password mysql -h 127.0.0.1 --protocol=TCP -u$user -D $database -Nse 'SELECT 1'" >/dev/null 2>&1; then
         break
       fi
       [[ "$attempt" -lt 120 ]] || { docker logs "$name" | tail -120; return 1; }
       sleep 1
     done
-    docker exec -i "$name" sh -lc "MYSQL_PWD=$password exec mysql -u$user $database" < fixtures/mysql/fixture.sql
+    docker exec -i "$name" sh -lc "MYSQL_PWD=$password exec mysql -h 127.0.0.1 --protocol=TCP -u$user $database" < fixtures/mysql/fixture.sql
   else
     docker run -d --name "$name"       -e MARIADB_ROOT_PASSWORD=root-fixture-password       -e MARIADB_DATABASE="$database"       -e MARIADB_USER="$user"       -e MARIADB_PASSWORD="$password"       -P "$image" >/dev/null
     for attempt in $(seq 1 120); do
-      if docker exec "$name" sh -lc "MYSQL_PWD=$password mariadb -u$user -D $database -Nse 'SELECT 1'" >/dev/null 2>&1; then
+      if docker exec "$name" sh -lc "MYSQL_PWD=$password mariadb -h 127.0.0.1 --protocol=TCP -u$user -D $database -Nse 'SELECT 1'" >/dev/null 2>&1; then
         break
       fi
       [[ "$attempt" -lt 120 ]] || { docker logs "$name" | tail -120; return 1; }
       sleep 1
     done
-    docker exec -i "$name" sh -lc "MYSQL_PWD=$password exec mariadb -u$user $database" < fixtures/mysql/fixture.sql
+    docker exec -i "$name" sh -lc "MYSQL_PWD=$password exec mariadb -h 127.0.0.1 --protocol=TCP -u$user $database" < fixtures/mysql/fixture.sql
   fi
 
   local port
